@@ -29,6 +29,7 @@
 #include "nav_msgs/Path.h"
 #include "ros/ros.h"
 #include "sensor_msgs/PointCloud2.h"
+#include "sensor_msgs/Imu.h"
 #include "tf2_ros/transform_broadcaster.h"
 
 namespace kiss_icp_ros {
@@ -41,6 +42,7 @@ public:
 private:
     /// Register new frame
     void RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg);
+    void imuFrame(const sensor_msgs::Imu::ConstPtr &msg);
 
     /// Ros node stuff
     ros::NodeHandle nh_;
@@ -54,6 +56,7 @@ private:
 
     /// Data subscribers.
     ros::Subscriber pointcloud_sub_;
+    ros::Subscriber imu_sub_;
 
     /// Data publishers.
     ros::Publisher odom_publisher_;
@@ -70,6 +73,9 @@ private:
     /// Global/map coordinate frame.
     std::string odom_frame_{"odom"};
     std::string child_frame_{"base_link"};
+
+    /// Combining msg
+    std::vector<Eigen::Matrix<double, 10, 1>> imu_bundle;
 };
 
 }  // namespace kiss_icp_ros

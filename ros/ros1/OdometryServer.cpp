@@ -49,6 +49,7 @@ namespace kiss_icp_ros {
 using utils::EigenToPointCloud2;
 using utils::GetTimestamps;
 using utils::PointCloud2ToEigen;
+using utils::ImuToEigen;
 
 OdometryServer::OdometryServer(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
     : nh_(nh), pnh_(pnh) {
@@ -74,6 +75,11 @@ OdometryServer::OdometryServer(const ros::NodeHandle &nh, const ros::NodeHandle 
     // Initialize subscribers
     pointcloud_sub_ = nh_.subscribe<sensor_msgs::PointCloud2>("pointcloud_topic", queue_size_,
                                                               &OdometryServer::RegisterFrame, this);
+
+    imu_sub_ = nh_.subscribe<sensor_msgs::Imu>("imu_topic", queue_size_,
+                                                              &OdometryServer::imuFrame, this);
+
+
 
     // Initialize publishers
     odom_publisher_ = pnh_.advertise<nav_msgs::Odometry>("odometry", queue_size_);
@@ -106,6 +112,34 @@ OdometryServer::OdometryServer(const ros::NodeHandle &nh, const ros::NodeHandle 
     // publish odometry msg
     ROS_INFO("KISS-ICP ROS 1 Odometry Node Initialized");
 }
+void OdometryServer::imuFrame(const sensor_msgs::Imu::ConstPtr &msg) {
+    
+    //Eigen::Matrix<double, 10, 1> msgToVector(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z,
+    //                                         msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z,
+    //                                         msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
+
+
+    Eigen::Matrix<double, 10, 1> msgToVector;
+    msgToVector[0] = msg->linear_acceleration.x;
+    msgToVector[1] = msg->linear_acceleration.y;
+    msgToVector[2] = msg->linear_acceleration.z;
+
+    msgToVector[3] = msg->angular_velocity.x;
+    msgToVector[4] = msg->angular_velocity.y;
+    msgToVector[5] = msg->angular_velocity.z;
+
+    msgToVector[6] = msg->orientation.x;
+    msgToVector[7] = msg->orientation.y;
+    msgToVector[8] = msg->orientation.z;
+    msgToVector[9] = msg->orientation.w;
+
+    std::cout << "msgToVector: " << msgToVector << std::endl;
+    //std::cout << "imu_bundle size: " << imu_bundle.size() << std::endl;
+    imu_bundle.push_back(msgToVector);
+    //imu_bundle = ImuToEigen(msg); //multi input
+}
+
+
 
 void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg) {
     const auto points = PointCloud2ToEigen(msg);
@@ -115,7 +149,7 @@ void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg
     }();
 
     // Register frame, main entry point to KISS-ICP pipeline
-    const auto &[frame, keypoints] = odometry_.RegisterFrame(points, timestamps);
+    const auto &[frame, keypoints] = odometry_.RegisterFrame(points, imu_bundle, timestamps);
 
     // PublishPose
     const auto pose = odometry_.poses().back();

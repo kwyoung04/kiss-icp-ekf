@@ -35,6 +35,7 @@
 
 namespace kiss_icp_ros::utils {
 using PointCloud2 = sensor_msgs::PointCloud2;
+using Imu2 = sensor_msgs::Imu;
 using PointField = sensor_msgs::PointField;
 using Header = std_msgs::Header;
 
@@ -160,6 +161,13 @@ inline std::vector<Eigen::Vector3d> PointCloud2ToEigen(const PointCloud2::ConstP
     for (size_t i = 0; i < msg->height * msg->width; ++i, ++msg_x, ++msg_y, ++msg_z) {
         points.emplace_back(*msg_x, *msg_y, *msg_z);
     }
+    return points;
+}
+
+inline std::vector<Eigen::Vector3d> ImuToEigen(const Imu2::ConstPtr msg) {
+    std::vector<Eigen::Vector3d> points;
+
+
     return points;
 }
 

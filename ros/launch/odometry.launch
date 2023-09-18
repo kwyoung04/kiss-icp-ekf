@@ -19,6 +19,7 @@
   <node pkg="kiss_icp" type="odometry_node" name="odometry_node" output="screen">
     <!-- ROS params -->
     <remap from="pointcloud_topic" to="$(arg topic)"/>
+    <remap from="imu_topic" to="/kitti/oxts/imu"/>
     <param name="odom_frame" value="$(arg odom_frame)"/>
     <param name="child_frame" value="$(arg child_frame)"/>
     <param name="publish_odom_tf" value="$(arg publish_odom_tf)"/>

@@ -35,6 +35,7 @@
 namespace kiss_icp::pipeline {
 
 KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                                    const std::vector<Eigen::Matrix<double, 10, 1>> &imu,
                                                     const std::vector<double> &timestamps) {
     const auto &deskew_frame = [&]() -> std::vector<Eigen::Vector3d> {
         if (!config_.deskew) return frame;
@@ -43,16 +44,21 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         //  If not enough poses for the estimation, do not de-skew
         const size_t N = poses().size();
         if (N <= 2) return frame;
-
+        
         // Estimate linear and angular velocities
         const auto &start_pose = poses_[N - 2];
         const auto &finish_pose = poses_[N - 1];
         return DeSkewScan(frame, timestamps, start_pose, finish_pose);
     }();
-    return RegisterFrame(deskew_frame);
+
+    //const auto &ori_imu = [&]() -> std::vector<Eigen::Vector3d> {
+    //    return std::vector<Eigen::Vector3d> ;
+    //}
+    return RegisterFrame(deskew_frame, imu);
 }
 
-KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame) {
+KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                                    const std::vector<Eigen::Matrix<double, 10, 1>> &imu) {
     // Preprocess the input cloud
     const auto &cropped_frame = Preprocess(frame, config_.max_range, config_.min_range);
 
@@ -63,9 +69,11 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     const double sigma = GetAdaptiveThreshold();
 
     // Compute initial_guess for ICP
-    const auto prediction = GetPredictionModel();
     const auto last_pose = !poses_.empty() ? poses_.back() : Sophus::SE3d();
-    const auto initial_guess = last_pose * prediction;
+    //const auto prediction = GetPredictionModel();
+    const auto prediction = GetKfModel(imu, last_pose);
+    const auto initial_guess = prediction;
+    //std::cout << imu.back() << std::endl;
 
     // Run icp
     const Sophus::SE3d new_pose = kiss_icp::RegisterFrame(source,         //
@@ -76,7 +84,8 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     const auto model_deviation = initial_guess.inverse() * new_pose;
     adaptive_threshold_.UpdateModelDeviation(model_deviation);
     local_map_.Update(frame_downsample, new_pose);
-    poses_.push_back(new_pose);
+    //poses_.push_back(new_pose);
+    poses_.push_back(initial_guess);
     return {frame, source};
 }
 
@@ -99,6 +108,36 @@ Sophus::SE3d KissICP::GetPredictionModel() const {
     const size_t N = poses_.size();
     if (N < 2) return pred;
     return poses_[N - 2].inverse() * poses_[N - 1];
+}
+
+Sophus::SE3d KissICP::GetKfModel(const std::vector<Eigen::Matrix<double, 10, 1>> &imu,
+                                 Sophus::SE3d last_pose) const {       
+    std::cout << "### in GetKfModel" << std::endl;
+    Sophus::SE3d pred = Sophus::SE3d();
+    const size_t N = poses_.size();
+    if (N < 2) return pred;
+
+    auto riter = imu.rbegin();
+    Eigen::Matrix<double, 10, 1> imu_t1 = *riter;
+
+
+    
+    Eigen::VectorXd imu_data(6); // [angular_velocity_x, angular_velocity_y, angular_velocity_z, linear_acceleration_x, linear_acceleration_y, linear_acceleration_z] 
+    imu_data[0] = imu_t1[0];
+    imu_data[1] = imu_t1[1];
+    imu_data[2] = 0;
+    imu_data[3] = imu_t1[3];
+    imu_data[4] = imu_t1[4];
+    imu_data[5] = imu_t1[5];
+    
+    
+    Eigen::VectorXd old_pose = last_pose.log(); // [position_x, position_y, position_z, ori_x, ori_y, ori_z]
+    
+
+    KalmanFilter kf;
+    kf.KalmanUpdate(imu_data, old_pose);
+
+    return kf.state_estimate; // new_pose
 }
 
 bool KissICP::HasMoved() {
